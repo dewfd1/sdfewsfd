@@ -1,0 +1,117 @@
+#define WIN32_LEAN_AND_MEAN // Убирает неиспользуемые определения из Windows.h
+
+#include <iostream> // Подключаем стандартный ввод/вывод
+#include <windows.h> // Подключаем стандартные функции
+#include <WinSock2.h> // Подключаем WinSock для работы с сетью
+#include <WS2tcpip.h> // Подключаем WS2tcpip для работы с TCP/IP
+
+using namespace std;
+int main()
+{
+	WSADATA wsaData;  // Cодержит сведения о реализации сокетов
+	ADDRINFO hints; // Структура используется функцией getaddrinfo для хранения информации об адресе хоста
+	ADDRINFO* addrResult; // Указатель на результат getaddrinfo
+	SOCKET ConnectSocket = INVALID_SOCKET; // Сокет для подключения, инициализируем невалидным значением
+	SOCKET ListenSocket = INVALID_SOCKET; // Сокет для прослушивания, инициализируем невалидным значением
+	const char* sendBuffer = "HELLO FROM CLIENT"; // Буфер для отправки
+	char recvBuffer[512]; // Буфер для приема данных 
+
+	int result = WSAStartup(MAKEWORD(2, 2), &wsaData); // Инициализируем WinSock
+	if (result != 0) { // Проверяем результат инициализации
+		cout << "WSAStaartup fauled result" << endl; // Выводим сообщение об ошибке
+		WSACleanup(); // Очищаем WinSock
+		return 1; // Возвращаем код ошибки
+	}
+
+	ZeroMemory(&hints, sizeof(hints)); // Обнуляем структуру hints
+	hints.ai_family = AF_INET; // Устанавливаем семейство адресов - IPv4
+	hints.ai_socktype = SOCK_STREAM; // Устанавливаем тип сокета - потоковый
+	hints.ai_protocol = IPPROTO_TCP; // Устанавливаем протокол - TCP
+	hints.ai_flags = AI_PASSIVE; // Устанавливаем флаг для прослушивания
+
+	result = getaddrinfo(NULL, "666", &hints, &addrResult); //  Получаем информацию об адресе(по порту 666)
+	if (result != 0) { // Проверяем результат получения информации
+		cout << "Getaddrinfo fauled error" << endl; // Выводим сообщение об ошибке
+		WSACleanup(); // Очищаем WinSock
+		return 1; // Возвращаем код ошибки
+	}
+
+	ListenSocket = socket(addrResult->ai_family, addrResult->ai_socktype, addrResult->ai_protocol); // Создаем сокет для прослушивания
+	if (ListenSocket == INVALID_SOCKET) { // Проверяем результат создания сокета
+		cout << "Socket crestion with" << endl; // Выводим сообщение об ошибке
+		WSACleanup(); // Очищаем WinSock
+		return 1; // Возвращаем код ошибки
+	}
+
+	result = bind(ListenSocket, addrResult->ai_addr, (int)addrResult->ai_addrlen); // Привязываем сокет к адресу
+	if (result == SOCKET_ERROR) { // Проверяем результат привязки
+		cout << "Binding connect failed" << endl; // Выводим сообщение об ошибке
+		closesocket(ListenSocket); // Закрываем сокет для прослушивания
+		ListenSocket = INVALID_SOCKET; // Сбрасываем сокет для прослушивания
+		freeaddrinfo(addrResult); // Освобождаем информацию об адресе
+		WSACleanup(); // Очищаем WinSock
+		return 1; // Возвращаем код ошибки
+	}
+	result = listen(ListenSocket, SOMAXCONN);
+	if (result == SOCKET_ERROR) {
+		cout << "Listening socket failed" << endl;
+		closesocket(ConnectSocket);
+		freeaddrinfo(addrResult); // Освобождаем информацию об адресе
+		WSACleanup(); // Очищаем WinSock
+		return 1; // Возвращаем код ошибки
+	}
+
+	ConnectSocket = accept(ListenSocket, NULL, NULL); // Принимаем подключение
+	if (ConnectSocket == INVALID_SOCKET) { // Проверяем результат приема подключения
+		cout << "Accepting socket" << endl; // Выводим сообщение об ошибке
+		closesocket(ConnectSocket);  // Закрываем сокет для подключения
+		freeaddrinfo(addrResult); // Освобождаем информацию об адресе
+		WSACleanup(); // Очищаем WinSock
+		return 1; // Возвращаем код ошибки
+	}
+	closesocket; // Закрываем сокет для прослушивания
+
+	do {
+		ZeroMemory(recvBuffer, 512); // Обнуляем буфер для приема данных
+		result = recv(ConnectSocket, recvBuffer, 512, 0); // Получаем данные
+		if (result > 0) { // Проверяем результат получения данных
+			cout << "Received " << result << "bytes" << endl; // Выводим количество полученных байт
+			cout << "Received data " << recvBuffer << endl; // Выводим полученные данные
+
+
+			result = send(ConnectSocket, sendBuffer, (int)strlen(sendBuffer), 0); // Отправляем данные обратно
+
+			if (result == SOCKET_ERROR) { // Проверяем результат отправки данных
+				cout << "Failed to send data back" << endl; // Выводим сообщение об ошибке
+				closesocket(ConnectSocket); // Закрываем сокет для подключения
+				freeaddrinfo(addrResult); // Освобождаем информацию об адресе
+				WSACleanup(); // Очищаем WinSock
+			}
+		}
+		else if (result == 0) // Проверяем, закрыто ли соединение
+			cout << "Connection closing..." << endl; // Выводим сообщение о закрытии соединения
+
+		else // Проверяем, произошла ли ошибка получения данных
+		{
+			cout << "recv failed with error" << endl; // Выводим сообщение об ошибке
+			closesocket(ConnectSocket); // Закрываем сокет для подключения
+			freeaddrinfo(addrResult); // Освобождаем информацию об адресе
+			WSACleanup(); // Очищаем WinSock
+			return 1; // Возвращаем код ошибки
+		}
+
+
+	} while (result > 0); // Цикл продолжается, пока получено больше 0 байт
+
+	result = shutdown(ConnectSocket, SD_SEND); // Запрещаем отправку данных
+	if (result == SOCKET_ERROR) { // Проверяем результат запрета отправки
+		closesocket(ConnectSocket); // Закрываем сокет для подключения
+		freeaddrinfo(addrResult); // Освобождаем информацию об адресе
+		WSACleanup(); // Очищаем WinSock
+		return 1; // Возвращаем код ошибки
+	}
+	closesocket(ConnectSocket); // Закрываем сокет для подключения
+	freeaddrinfo(addrResult); // Освобождаем информацию об адресе
+	WSACleanup(); // Очищаем WinSock
+	return 0;
+}
